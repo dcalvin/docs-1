@@ -4,7 +4,7 @@ summary: Common cluster topology patterns with setup examples and performance co
 toc: true
 ---
 
-This is page covers common cluster topology patterns with setup examples and performance considerations.
+This page covers common cluster topology patterns with setup examples and performance considerations.
 
 ## Considerations
 
@@ -15,6 +15,7 @@ When selecting a pattern for your cluster, the following must be taken into cons
 - The leaseholders are local to reader and writers within the datacenter.
 - The leaseholder migration among the datacenters is minimized by using the [partitioning feature](partitioning.html).
 - Whether the application is designed to use the [partitioning feature](partitioning.html) or not.
+- Every datacenter has three or more nodes.
 - The `--locality` flag must be set properly on each node to enable [follow-the-workload](demo-follow-the-workload.html).
 
 Before you select a candidate pattern for your cluster, use the following broad patterns as a starting point and consider trade-offs.
@@ -32,16 +33,18 @@ A local deployment is a single datacenter deployment. The network latency among 
 In the diagrams below:
 
 - `App` is an application that accesses CockroachDB
-- `HA-Proxy` is a software based load balancer
+- `HAProxy` is a software based load balancer
 - `1`, `2`, and `3` each represents a CockroachDB node
 - The nodes are all running in a single datacenter
+- All CockroachDB nodes are expected to be able to communicate with each other
+- The cluster is using the default replication factor of 3
 
 Normal operating mode:
 
 ~~~
       App
        |
-    HA-Proxy
+    HAProxy
   /    |    \
  /     |     \
 1------2------3
@@ -53,7 +56,7 @@ If node `1` goes down, the database and app are still fully operational:
 ~~~
       App
        |
-    HA-Proxy
+    HAProxy
   /    |    \
  /     |     \
 x------2------3
@@ -65,7 +68,7 @@ If node `2` is down, the database and app are still fully operational:
 ~~~
       App
        |
-    HA-Proxy
+    HAProxy
   /    |    \
  /     |     \
 1------x------3
@@ -77,7 +80,7 @@ If node `3` is down, the database and app are still fully operational:
 ~~~
       App
        |
-    HA-Proxy
+    HAProxy
   /    |    \
  /     |     \
 1------2------x
@@ -131,11 +134,13 @@ In this pattern:
 - Similar to the [local](#single-local-datacenter-clusters) topology, more regions can be added dynamically.
 - A homogenous configuration among the regions for simplified operations is recommended.
 - For sophisticated workloads, each region can have different node count and node specification. This heterogeneous configuration could better handle regional specific concurrency and load characteristics.
+- All CockroachDB nodes are expected to be able to communicate with each other
+- The cluster is using the default replication factor of 3
 
 #### Availability expectations
 
 - Each region defines an availability zone, and three or more regions are recommended.
-- Can survive a single datacenter failure
+- Can survive a single datacenter failure, since a majority of the replicas will remain available.
 
 #### Performance expectations
 
@@ -143,7 +148,7 @@ In this pattern:
 
 ### Locality-aware load balancing
 
-Modern [multi-tier architecture](https://en.wikipedia.org/wiki/Multitier_architecture) is simplified as `App` and `LB` layers in the below diagram:
+Modern [multi-tier architecture](https://en.wikipedia.org/wiki/Multitier_architecture) is simplified as `App`, global server load balancer (`GSLB`), and load balancer (`LB`) layers in the below diagram:
 
 ~~~
          Clients
@@ -172,7 +177,7 @@ West    Central    East
 
 #### Availability expectations
 
-- Can survive a single datacenter failure
+- Can survive a single datacenter failure, since a majority of the replicas will remain available.
 
 #### Performance expectations
 
@@ -180,7 +185,7 @@ West    Central    East
 
 #### Application expectations
 
-When locality is enabled, `haproxy` should be setup to load balance on the database nodes within the same locality as the app servers first:
+When locality is enabled, `HAProxy` should be setup to load balance on the database nodes within the same locality as the app servers first:
 
 - The `West` app servers should connect to the West CockroachDB servers.
 - The `Central` app servers should connect to the Central CockroachDB servers.
@@ -190,7 +195,7 @@ If all of the nodes for a preferred locality are down, then the app will try dat
 
 ### High-Performance
 
-Some applications have high-performance requirements. In the diagram below, `NJ` and `NY` depict two separate datacenters that are connected by a high bandwidth low-latency network:
+Some applications have high-performance requirements. In the diagram below, `NJ` and `NY` depict two separate datacenters, each with 3+ nodes, that are connected by a high bandwidth low-latency network:
 
 ~~~
    NJ ---1ms--- NY
@@ -211,12 +216,12 @@ Some applications have high-performance requirements. In the diagram below, `NJ`
 In this pattern:
 
 - `NJ` and `NY` have the performance characteristics of the [local topology](#single-local-datacenter-clusters), but the benefit of Zero RPO and near Zero RTO disaster recovery SLA.
-- `CA` and `NV` have been set up with a network capability
+- `CA` and `NV` have been set up with a network capability.
 - The `Central` region serves as the quorum.
 
 #### Availability expectations
 
-- The cluster can survive a single datacenter failure.
+- Can survive a single datacenter failure, since a majority of the replicas will remain available.
 
 #### Performance expectations
 
@@ -257,10 +262,9 @@ The global pattern connects [multiple regional clusters](#multi-region-clusters)
 
 - Each region (i.e., `Asia`, `Europe`, `Americas`) contains three datacenters (i.e., `West`, `East`, `Central`)
 
-
 #### Availability expectations
 
-- With nine datacenters, the cluster can survive four datacenter failures.
+- With nine datacenters, the cluster can survive four datacenter failures, since a majority of the replicas will remain available.
 
 #### Performance expectations
 
@@ -308,7 +312,7 @@ West ---60ms--- East
 
 #### Availability expectations
 
-- The cluster can survive a single datacenter failure.
+- Can survive a single datacenter failure, since a majority of the replicas will remain available.
 
 #### Performance expectations
 
@@ -354,7 +358,7 @@ West ---60ms--- East1
 
 #### Availability expectations
 
-- The cluster can survive a single datacenter failure.
+- Can survive a single datacenter failure, since a majority of the replicas will remain available.
 
 #### Performance expectations
 
@@ -400,7 +404,7 @@ West2----60ms----East2
 
 #### Availability expectations
 
-- The cluster can survive a single datacenter failure.
+- Can survive a single datacenter failure, since a majority of the replicas will remain available.
 
 #### Performance expectations
 
@@ -424,5 +428,7 @@ West2----60ms----East2
     ~~~
 
 ## Anti-patterns
+
+- Do not have a cluster's replication factor equal to the number of nodes in your cluster.
 
 _Do we want to add a section for bad patterns (i.e., two datacenters, even # of replicas)?_
